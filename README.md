@@ -1,3 +1,5 @@
+![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/bgriggs/RVCirculateWater/dotnet.yml)
+
 # RV Circulate Water
 This is a service that is intended to help mitigate freezing pipes in RVs by circulating the water through the system when it gets cold.
 
