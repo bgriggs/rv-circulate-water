@@ -3,7 +3,7 @@
 sudo systemctl stop CirculateWater.service
 
 # Rub on build box
-scp -r C:/Users/brian/source/repos/CirculateWater/CirculateWater/bin/Debug/net7.0/* pi@circulate:/home/pi/CirculateWater/
+scp -r C:/Users/brian/source/repos/CirculateWater/CirculateWater/bin/Debug/net8.0/* pi@circulate:/home/pi/CirculateWater/
 
 # Run on RPI
 sudo systemctl start CirculateWater.service
