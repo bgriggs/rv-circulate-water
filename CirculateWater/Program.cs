@@ -7,47 +7,46 @@ using NLog.Extensions.Hosting;
 using NLog.Extensions.Logging;
 using LogLevel = Microsoft.Extensions.Logging.LogLevel;
 
-namespace CirculateWater
+namespace CirculateWater;
+
+internal class Program
 {
-    internal class Program
+    async static Task Main()
     {
-        async static Task Main()
-        {
-            var logger = LogManager.GetCurrentClassLogger();
+        var logger = LogManager.GetCurrentClassLogger();
 
-            var basePath = Directory.GetCurrentDirectory();
-            var config = new ConfigurationBuilder()
-                    .SetBasePath(basePath)
-                    .AddJsonFile("appsettings.json", optional: true, reloadOnChange: true)
-                    .Build();
+        var basePath = Directory.GetCurrentDirectory();
+        var config = new ConfigurationBuilder()
+                .SetBasePath(basePath)
+                .AddJsonFile("appsettings.json", optional: true, reloadOnChange: true)
+                .Build();
 
-            logger.Info("Starting...");
+        logger.Info("Starting...");
 
-            var host = new HostBuilder()
-               .ConfigureServices((builderContext, services) =>
+        var host = new HostBuilder()
+           .ConfigureServices((builderContext, services) =>
+           {
+               //services.AddSingleton<ILogger>(logger);
+               services.AddSingleton<IConfiguration>(config);
+               services.AddTransient<IControlOutput, RpiControlOutput>();
+               services.AddTransient<ITemperature, VictronModbusTemperatureSource>();
+               services.AddLogging(loggingBuilder =>
                {
-                   //services.AddSingleton<ILogger>(logger);
-                   services.AddSingleton<IConfiguration>(config);
-                   services.AddTransient<IControlOutput, RpiControlOutput>();
-                   services.AddTransient<ITemperature, VictronModbusTemperatureSource>();
-                   services.AddLogging(loggingBuilder =>
-                   {
-                       loggingBuilder.ClearProviders();
-                       loggingBuilder.SetMinimumLevel(LogLevel.Debug);
-                       loggingBuilder.AddNLog();
-                   });
-                   services.AddHostedService<Application>();
-               })
-               .UseNLog()
-               .Build();
-            try
-            {
-                await host.RunAsync();
-            }
-            catch (OperationCanceledException)
-            {
-                // suppress
-            }
+                   loggingBuilder.ClearProviders();
+                   loggingBuilder.SetMinimumLevel(LogLevel.Debug);
+                   loggingBuilder.AddNLog();
+               });
+               services.AddHostedService<Application>();
+           })
+           .UseNLog()
+           .Build();
+        try
+        {
+            await host.RunAsync();
+        }
+        catch (OperationCanceledException)
+        {
+            // suppress
         }
     }
 }

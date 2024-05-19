@@ -1,21 +1,20 @@
 ﻿using System.Device.Gpio;
 
-namespace CirculateWater
+namespace CirculateWater;
+
+internal class RpiControlOutput : IControlOutput
 {
-    internal class RpiControlOutput : IControlOutput
+    const int PIN = 26; // GPIO26 is pin 37 on RPi
+
+    public async Task Circulate(TimeSpan duration, CancellationToken stoppingToken)
     {
-        const int PIN = 26; // GPIO26 is pin 37 on RPi
+        using GpioController controller = new();
+        controller.OpenPin(PIN, PinMode.Output);
 
-        public async Task Circulate(TimeSpan duration, CancellationToken stoppingToken)
-        {
-            using GpioController controller = new();
-            controller.OpenPin(PIN, PinMode.Output);
+        controller.Write(PIN, PinValue.High);
+        
+        await Task.Delay(duration, stoppingToken);
 
-            controller.Write(PIN, PinValue.High);
-            
-            await Task.Delay(duration, stoppingToken);
-
-            controller.Write(PIN, PinValue.Low);
-        }
+        controller.Write(PIN, PinValue.Low);
     }
 }

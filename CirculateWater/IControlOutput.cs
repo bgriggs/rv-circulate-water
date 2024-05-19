@@ -1,13 +1,6 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿namespace CirculateWater;
 
-namespace CirculateWater
+internal interface IControlOutput
 {
-    internal interface IControlOutput
-    {
-        public Task Circulate(TimeSpan duration, CancellationToken stoppingToken);
-    }
+    public Task Circulate(TimeSpan duration, CancellationToken stoppingToken);
 }
