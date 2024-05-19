@@ -1,4 +1,4 @@
-![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/bgriggs/RVCirculateWater/dotnet.yml)
+![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/bgriggs/rv-circulate-water/dotnet.yml)
 
 # RV Circulate Water
 This is a service that is intended to help mitigate freezing pipes in RVs by circulating the water through the system when it gets cold.
@@ -13,4 +13,4 @@ You are able to set the temperature threshold and how long to run the pump.  For
 Relay: https://www.amazon.com/gp/product/B0BJBDWMM2/ref=ppx_yo_dt_b_search_asin_title?ie=UTF8&psc=1  
 Raspberry PI Power: https://www.amazon.com/dp/B01MEF293V?psc=1&ref=ppx_yo2ov_dt_b_product_details  
 Solenoid: https://www.amazon.com/dp/B07KCGYQVD?psc=1&ref=ppx_yo2ov_dt_b_product_details  
-Raspberry PI 3 or 4  
+Raspberry PI 3, 4, or 5
