@@ -1,6 +1,6 @@
 ﻿using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
-using NLog;
+using Microsoft.Extensions.Logging;
 using System.Diagnostics;
 using System.Text.RegularExpressions;
 
@@ -17,10 +17,10 @@ namespace CirculateWater
         private IConfiguration Config { get; }
         private ILogger Logger { get; }
 
-        public Application(IConfiguration config, ILogger logger, IControlOutput controlOutput, ITemperature temperature)
+        public Application(IConfiguration config, ILoggerFactory loggerFactory, IControlOutput controlOutput, ITemperature temperature)
         {
             Config = config;
-            Logger = logger;
+            Logger = loggerFactory.CreateLogger(GetType().Name);
             this.controlOutput = controlOutput;
             this.temperature = temperature;
         }
@@ -39,32 +39,32 @@ namespace CirculateWater
                     var stageSettings = GetStage(tempF);
                     if (stageSettings != null)
                     {
-                        Logger.Debug($"Stage {stageSettings.StageNumber} active: {tempF:0.0}F <= {stageSettings.TempThresholdF:0.0}F");
+                        Logger.LogDebug($"Stage {stageSettings.StageNumber} active: {tempF:0.0}F <= {stageSettings.TempThresholdF:0.0}F");
 
                         var elapsed = DateTime.UtcNow - lastCirc;
                         if (elapsed.TotalMinutes > stageSettings.CirculateFrequencyMins)
                         {
-                            Logger.Debug($"Setting output ON for {stageSettings.CirculateDurationSecs}secs");
+                            Logger.LogDebug($"Setting output ON for {stageSettings.CirculateDurationSecs}secs");
                             await controlOutput.Circulate(TimeSpan.FromSeconds(stageSettings.CirculateDurationSecs), stoppingToken);
-                            Logger.Debug("Output off");
+                            Logger.LogDebug("Output off");
                             lastCirc = DateTime.UtcNow;
                         }
                         else
                         {
-                            Logger.Debug($"Skipping circulation: Elapsed:{elapsed.TotalMinutes:0.#}mins CircDuration: {stageSettings.CirculateFrequencyMins}mins");
+                            Logger.LogDebug($"Skipping circulation: Elapsed:{elapsed.TotalMinutes:0.#}mins CircDuration: {stageSettings.CirculateFrequencyMins}mins");
                         }
                     }
                     else
                     {
-                        Logger.Debug($"Current temperature {tempF:0.#}F is outside the range of available temp stages.");
+                        Logger.LogDebug($"Current temperature {tempF:0.#}F is outside the range of available temp stages.");
                     }
                 }
                 catch (Exception ex)
                 {
-                    Logger.Error(ex, $"Error in main loop");
+                    Logger.LogError(ex, $"Error in main loop");
                 }
 
-                Logger.Debug($"Processing complete in {sw.ElapsedMilliseconds:0.#}ms");
+                Logger.LogDebug($"Processing complete in {sw.ElapsedMilliseconds:0.#}ms");
                 var frequency = TimeSpan.FromSeconds(double.Parse(Config["CirculateWater:TempCheckFrequencySecs"]));
                 await Task.Delay(frequency, stoppingToken);
             }
@@ -84,7 +84,7 @@ namespace CirculateWater
                     stages.Add(new TemperatureStage(stageNumber, Config));
                 }
             }
-            stages = stages.OrderBy(s => s.TempThresholdF).ToList();
+            stages = [.. stages.OrderBy(s => s.TempThresholdF)];
             foreach (var s in stages)
             {
                 if (temperatureF <= s.TempThresholdF)
