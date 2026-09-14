@@ -1,9 +1,24 @@
+# One-time RPI Setup
+# .NET 8 runtime (Raspbian 11 Bullseye has glibc 2.31; .NET 10 Arm32 needs glibc 2.35)
+curl -sSL https://dot.net/v1/dotnet-install.sh | bash /dev/stdin --channel 8.0 --runtime dotnet --install-dir /home/pi/.dotnet
+
+# libgpiod v1. Without it System.Device.Gpio 4.x fails to open any pin (https://github.com/dotnet/iot/issues/2602)
+sudo apt-get install -y libgpiod2
+
+# Hold GPIO26 low from power-on. The relay board pulls an undriven pin high, which opens the solenoid.
+# Add under an [all] section at the end of /boot/config.txt:
+gpio=26=op,dl
+
+# Install the service
+sudo cp CirculateWater.service /lib/systemd/system/ && sudo systemctl enable CirculateWater.service
+
 # Deploy Update Steps
+# NOTE: the copy below overwrites appsettings.json on the RPI with the repo version; back up and restore the RPI copy
 # Run on RPI
 sudo systemctl stop CirculateWater.service
 
 # Rub on build box
-scp -r C:/Users/brian/source/repos/CirculateWater/CirculateWater/bin/Debug/net10.0/* pi@circulate:/home/pi/CirculateWater/
+scp -r C:/Users/brian/source/repos/CirculateWater/CirculateWater/bin/Debug/net8.0/* pi@circulate:/home/pi/CirculateWater/
 
 # Run on RPI
 sudo systemctl start CirculateWater.service
