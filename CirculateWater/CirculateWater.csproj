@@ -23,6 +23,9 @@
 		<PackageReference Include="System.Device.Gpio" Version="4.2.0" />
 	</ItemGroup>
 	<ItemGroup>
+		<InternalsVisibleTo Include="CirculateWater.Tests" />
+	</ItemGroup>
+	<ItemGroup>
 	  <None Update="appsettings.json">
 	    <CopyToOutputDirectory>Always</CopyToOutputDirectory>
 	  </None>
