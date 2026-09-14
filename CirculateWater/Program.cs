@@ -15,6 +15,16 @@ internal class Program
     {
         var logger = LogManager.GetCurrentClassLogger();
 
+        // Close the solenoid before anything else can fail, in case a previous run died while circulating
+        try
+        {
+            new RpiControlOutput().EnsureClosed();
+        }
+        catch (Exception ex)
+        {
+            logger.Error(ex, "Failed to close solenoid on startup");
+        }
+
         var basePath = Directory.GetCurrentDirectory();
         var config = new ConfigurationBuilder()
                 .SetBasePath(basePath)

@@ -37,7 +37,12 @@ internal partial class Application : BackgroundService
             {
                 var tempF = await temperature.GetTemperatureF();
                 var stageSettings = GetStage(tempF);
-                if (stageSettings != null)
+                if (tempF == null)
+                {
+                    Logger.LogWarning("Temperature unavailable, keeping solenoid closed");
+                    EnsureClosed();
+                }
+                else if (stageSettings != null)
                 {
                     Logger.LogDebug($"Stage {stageSettings.StageNumber} active: {tempF:0.0}F <= {stageSettings.TempThresholdF:0.0}F");
 
@@ -59,14 +64,36 @@ internal partial class Application : BackgroundService
                     Logger.LogDebug($"Current temperature {tempF:0.#}F is outside the range of available temp stages.");
                 }
             }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                Logger.LogInformation("Stopping, closing solenoid");
+                EnsureClosed();
+                break;
+            }
             catch (Exception ex)
             {
-                Logger.LogError(ex, $"Error in main loop");
+                Logger.LogError(ex, $"Error in main loop, closing solenoid");
+                EnsureClosed();
             }
 
             Logger.LogDebug($"Processing complete in {sw.ElapsedMilliseconds:0.#}ms");
             var frequency = TimeSpan.FromSeconds(double.Parse(Config["CirculateWater:TempCheckFrequencySecs"]));
             await Task.Delay(frequency, stoppingToken);
+        }
+    }
+
+    /// <summary>
+    /// Forces the solenoid closed. Failures are logged rather than thrown so the loop keeps running.
+    /// </summary>
+    private void EnsureClosed()
+    {
+        try
+        {
+            controlOutput.EnsureClosed();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to close solenoid");
         }
     }
 
