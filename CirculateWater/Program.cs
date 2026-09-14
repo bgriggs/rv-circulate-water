@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -26,18 +26,23 @@ internal class Program
         }
 
         var basePath = Directory.GetCurrentDirectory();
-        var config = new ConfigurationBuilder()
-                .SetBasePath(basePath)
-                .AddJsonFile("appsettings.json", optional: true, reloadOnChange: true)
-                .Build();
+        var overridesPath = Path.Combine(basePath, ConfigEditor.OverridesFileName);
+        var status = new StatusTracker(TimeProvider.System);
+        var config = AppConfiguration.Build(basePath, status, (ex, message) => logger.Error(ex, message), out var overridesIgnored);
 
         logger.Info("Starting...");
+        if (File.Exists(overridesPath) && !overridesIgnored)
+        {
+            logger.Info($"Settings in {ConfigEditor.OverridesFileName} take precedence over appsettings.json");
+        }
 
         var host = new HostBuilder()
            .ConfigureServices((builderContext, services) =>
            {
                //services.AddSingleton<ILogger>(logger);
                services.AddSingleton<IConfiguration>(config);
+               services.AddSingleton(status);
+               services.AddSingleton(new ConfigEditor(Path.Combine(basePath, AppConfiguration.AppSettingsFileName), overridesPath));
                services.AddTransient<IControlOutput, RpiControlOutput>();
                services.AddTransient<ITemperature, VictronModbusTemperatureSource>();
                services.AddLogging(loggingBuilder =>
@@ -46,6 +51,8 @@ internal class Program
                    loggingBuilder.SetMinimumLevel(LogLevel.Debug);
                    loggingBuilder.AddNLog();
                });
+               // The host stops services in reverse order, so registering MQTT first lets Application close the solenoid first
+               services.AddHostedService<MqttService>();
                services.AddHostedService<Application>();
            })
            .UseNLog()

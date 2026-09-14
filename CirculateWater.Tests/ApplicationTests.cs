@@ -1,6 +1,7 @@
 using CirculateWater.Tests.Fakes;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using System.Collections.Concurrent;
 
 namespace CirculateWater.Tests;
 
@@ -14,6 +15,7 @@ public class ApplicationTests : IDisposable
     private readonly CancellationTokenSource stop = new();
     private readonly FakeControlOutput output = new();
     private readonly ListLoggerProvider logs = new();
+    private readonly StatusTracker status = new(TimeProvider.System);
 
     public void Dispose() => stop.Dispose();
 
@@ -28,6 +30,9 @@ public class ApplicationTests : IDisposable
 
         Assert.Equal(TimeSpan.FromSeconds(expectedDurationSecs), Assert.Single(output.Circulations));
         Assert.Equal(0, output.EnsureClosedCalls);
+        var snapshot = status.GetSnapshot();
+        Assert.Equal(expectedDurationSecs, snapshot.LastCirculationDurationSecs);
+        Assert.False(snapshot.SolenoidIsOpen);
     }
 
     [Fact]
@@ -48,6 +53,35 @@ public class ApplicationTests : IDisposable
     }
 
     [Fact]
+    public async Task ReportsTemperatureAndActiveStage()
+    {
+        var snapshots = new ConcurrentQueue<StatusSnapshot>();
+        status.Changed += () => snapshots.Enqueue(status.GetSnapshot());
+
+        await RunAsync(CreateConfig(circulateFrequencyMins: 15), () => 20.0, () => 3.0, () => 50.0);
+
+        Assert.Contains(snapshots, s => s.CurrentTemperatureF == 20.0 && s.ActiveStage == 1);
+        Assert.Contains(snapshots, s => s.CurrentTemperatureF == 3.0 && s.ActiveStage == 2);
+        Assert.Contains(snapshots, s => s.CurrentTemperatureF == 50.0 && s.ActiveStage == null);
+    }
+
+    [Fact]
+    public async Task ReportsSolenoidOpen_OnlyWhileCirculating()
+    {
+        bool? openDuringCirculation = null;
+        output.OnCirculate = (_, _) =>
+        {
+            openDuringCirculation = status.GetSnapshot().SolenoidIsOpen;
+            return Task.CompletedTask;
+        };
+
+        await RunAsync(CreateConfig(CirculateImmediately), () => 20.0);
+
+        Assert.True(openDuringCirculation);
+        Assert.False(status.GetSnapshot().SolenoidIsOpen);
+    }
+
+    [Fact]
     public async Task ClosesSolenoid_WhenTemperatureUnavailable()
     {
         await RunAsync(CreateConfig(CirculateImmediately), () => null);
@@ -55,6 +89,7 @@ public class ApplicationTests : IDisposable
         Assert.Empty(output.Circulations);
         Assert.Equal(1, output.EnsureClosedCalls);
         Assert.Contains(logs.Entries, e => e.Level == LogLevel.Warning);
+        Assert.Equal("Temperature unavailable", status.GetSnapshot().LastError);
     }
 
     [Fact]
@@ -68,6 +103,7 @@ public class ApplicationTests : IDisposable
         Assert.Equal(1, output.EnsureClosedCalls);
         Assert.Single(output.Circulations);
         Assert.Contains(logs.Entries, e => e.Level == LogLevel.Error && e.Exception == failure);
+        Assert.Equal("Cerbo unreachable", status.GetSnapshot().LastError);
     }
 
     [Fact]
@@ -80,6 +116,9 @@ public class ApplicationTests : IDisposable
         Assert.Single(output.Circulations);
         Assert.Equal(1, output.EnsureClosedCalls);
         Assert.Contains(logs.Entries, e => e.Level == LogLevel.Error && e.Exception is InvalidOperationException);
+        var snapshot = status.GetSnapshot();
+        Assert.Equal("GPIO failure", snapshot.LastError);
+        Assert.False(snapshot.SolenoidIsOpen);
     }
 
     [Fact]
@@ -92,6 +131,7 @@ public class ApplicationTests : IDisposable
         Assert.Equal(2, temperature.ScriptedReads);
         Assert.Equal(2, output.EnsureClosedCalls);
         Assert.Equal(2, logs.Entries.Count(e => e.Level == LogLevel.Error && e.Message == "Failed to close solenoid"));
+        Assert.Equal("Failed to close solenoid: GPIO failure", status.GetSnapshot().LastError);
     }
 
     [Fact]
@@ -108,7 +148,59 @@ public class ApplicationTests : IDisposable
         Assert.Single(output.Circulations);
         Assert.Equal(1, output.EnsureClosedCalls);
         Assert.DoesNotContain(logs.Entries, e => e.Level >= LogLevel.Error);
+        Assert.False(status.GetSnapshot().SolenoidIsOpen);
     }
+
+    [Fact]
+    public async Task FindsStages_WhenSettingNamesUseDifferentCase()
+    {
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string>
+            {
+                ["circulatewater:stage1:tempthresholdf"] = "28",
+                ["circulatewater:stage1:circulatefrequencymins"] = CirculateImmediately.ToString(),
+                ["circulatewater:stage1:circulatedurationsecs"] = "10",
+                ["CirculateWater:TempCheckFrequencySecs"] = "0",
+            })
+            .Build();
+
+        await RunAsync(config, () => 20.0);
+
+        Assert.Equal(TimeSpan.FromSeconds(10), Assert.Single(output.Circulations));
+    }
+
+    [Fact]
+    public async Task SkipsIncompleteStage_AndStillCirculatesForOthers()
+    {
+        await RunAsync(CreateConfigWithIncompleteStage2(), () => 20.0);
+
+        Assert.Equal(TimeSpan.FromSeconds(10), Assert.Single(output.Circulations));
+        Assert.Equal(0, output.EnsureClosedCalls);
+        Assert.Equal("Stage2 settings are missing or invalid", status.GetSnapshot().LastError);
+    }
+
+    [Fact]
+    public async Task ReportsLastingSettingsProblemOnce_SoNewerErrorsStayVisible()
+    {
+        await RunAsync(CreateConfigWithIncompleteStage2(), () => 20.0, () => throw new IOException("Cerbo unreachable"), () => 20.0);
+
+        Assert.Equal("Cerbo unreachable", status.GetSnapshot().LastError);
+        Assert.Single(logs.Entries, e => e.Message == "Stage2 settings are missing or invalid");
+    }
+
+    /// <summary>
+    /// Stage 1 is complete; only Stage2's threshold is left, as after a deploy removed the rest of a stage that had an override.
+    /// </summary>
+    private static IConfiguration CreateConfigWithIncompleteStage2() => new ConfigurationBuilder()
+        .AddInMemoryCollection(new Dictionary<string, string>
+        {
+            ["CirculateWater:Stage1:TempThresholdF"] = "28",
+            ["CirculateWater:Stage1:CirculateFrequencyMins"] = CirculateImmediately.ToString(),
+            ["CirculateWater:Stage1:CirculateDurationSecs"] = "10",
+            ["CirculateWater:Stage2:TempThresholdF"] = "5",
+            ["CirculateWater:TempCheckFrequencySecs"] = "0",
+        })
+        .Build();
 
     /// <summary>
     /// Stage 1 covers 28F and below (10s); stage 2 covers 5F and below (20s). Temperature is checked continuously.
@@ -133,7 +225,7 @@ public class ApplicationTests : IDisposable
     {
         var temperature = new FakeTemperature(stop, readings);
         using var loggerFactory = new LoggerFactory([logs]);
-        using var app = new Application(config, loggerFactory, output, temperature);
+        using var app = new Application(config, loggerFactory, output, temperature, status);
 
         await app.StartAsync(stop.Token);
         try

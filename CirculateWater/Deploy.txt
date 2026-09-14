@@ -9,15 +9,22 @@ sudo apt-get install -y libgpiod2
 # Add under an [all] section at the end of /boot/config.txt:
 gpio=26=op,dl
 
+# MQTT broker for monitoring and settings changes, anonymous on the LAN (see README)
+sudo apt-get install -y mosquitto mosquitto-clients
+printf 'listener 1883\nallow_anonymous true\nmax_packet_size 65536\n' | sudo tee /etc/mosquitto/conf.d/circulate.conf
+sudo systemctl enable mosquitto && sudo systemctl restart mosquitto
+
 # Install the service
 sudo cp CirculateWater.service /lib/systemd/system/ && sudo systemctl enable CirculateWater.service
 
 # Deploy Update Steps
-# NOTE: the copy below overwrites appsettings.json on the RPI with the repo version; back up and restore the RPI copy
+# NOTE: the copy below replaces appsettings.json on the RPI with the repo version, which holds this RV's settings.
+# Settings changed over MQTT are kept in appsettings.overrides.json, which the copy doesn't touch.
 # Run on RPI
 sudo systemctl stop CirculateWater.service
 
 # Rub on build box
+# First delete appsettings.overrides.json from the folder being copied if a local run left one; it would replace the RV's
 scp -r C:/Users/brian/source/repos/CirculateWater/CirculateWater/bin/Debug/net8.0/* pi@circulate:/home/pi/CirculateWater/
 
 # Run on RPI

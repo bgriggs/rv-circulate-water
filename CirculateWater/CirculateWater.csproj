@@ -16,6 +16,7 @@
 		<PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.12" />
 		<PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.12" />
 		<PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.12" />
+		<PackageReference Include="MQTTnet" Version="5.2.0.1603" />
 		<PackageReference Include="NLog" Version="6.2.0" />
 		<PackageReference Include="NLog.Extensions.Hosting" Version="6.2.0" />
 		<PackageReference Include="NLog.Extensions.Logging" Version="6.2.0" />
@@ -25,6 +26,10 @@
 	<ItemGroup>
 		<InternalsVisibleTo Include="CirculateWater.Tests" />
 	</ItemGroup>
+	<!-- A local run can save settings changed over MQTT into the output folder; deploying that file would replace the RV's -->
+	<Target Name="RemoveLocalOverrides" AfterTargets="Build">
+		<Delete Files="$(OutDir)appsettings.overrides.json" />
+	</Target>
 	<ItemGroup>
 	  <None Update="appsettings.json">
 	    <CopyToOutputDirectory>Always</CopyToOutputDirectory>
